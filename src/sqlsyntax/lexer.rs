@@ -156,7 +156,7 @@ impl Lexer {
 
     fn no_state(&mut self, c: char) -> Result<LexerState, char> {
         match c {
-            'a'...'z' | 'A'...'Z' | '_' => {
+            'a'..='z' | 'A'..='Z' | '_' => {
                 self.string_buffer.push(c);
                 Ok(LexerState::Word)
             },
@@ -167,7 +167,7 @@ impl Lexer {
                 // string literal
                 Ok(LexerState::Apostrophe { escaping: false })
             },
-            '0'...'9' => {
+            '0'..='9' => {
                 self.string_buffer.push(c);
                 Ok(LexerState::Number { decimal: false })
             },
@@ -211,7 +211,7 @@ impl Lexer {
             LexerState::Word => {
                 match c {
                     Some(c) => match c {
-                        'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
+                        'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
                             self.string_buffer.push(c);
                             LexerState::Word
                         }
@@ -271,7 +271,7 @@ impl Lexer {
             LexerState::Number { decimal } => {
                 if let Some(c) = c {
                     match c {
-                        '0'...'9' => {
+                        '0'..='9' => {
                             self.string_buffer.push(c);
                             LexerState::Number { decimal: decimal }
                         },

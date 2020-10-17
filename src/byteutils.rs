@@ -313,7 +313,7 @@ mod test {
         let mut write_buf = [0; 8];
 
         for &(v, buf) in TEST_UDB.iter() {
-            let mut b = &mut write_buf[0..buf.len()];
+            let b = &mut write_buf[0..buf.len()];
             write_udbinteger(v, b);
             assert_eq!(buf, b);
         }
@@ -324,7 +324,7 @@ mod test {
         let mut write_buf = [0; 8];
 
         for &(v, buf) in TEST_SDB.iter() {
-            let mut b = &mut write_buf[0..buf.len()];
+            let b = &mut write_buf[0..buf.len()];
             write_sdbinteger(v, b);
             assert_eq!(buf, b);
         }

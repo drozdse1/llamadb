@@ -1,4 +1,4 @@
-#![feature(duration_span)]
+// #![feature(duration_span)]
 
 #[macro_use]
 extern crate log;
@@ -9,7 +9,7 @@ extern crate linenoise;
 extern crate llamadb;
 
 use std::io::Write;
-use std::time::Duration;
+use std::time::Instant;
 
 mod prettyselect;
 use prettyselect::pretty_select;
@@ -84,11 +84,11 @@ fn execute_statement(out: &mut Write, db: &mut llamadb::tempdb::TempDb, statemen
 
     let mut execute_result = None;
 
-    let duration = Duration::span(|| {
-        execute_result = Some(db.execute_statement(statement));
-    });
+    let start_time = Instant::now();
+
+    execute_result = Some(db.execute_statement(statement));
     
-    let seconds = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
+    let seconds = start_time.elapsed().as_secs() as f32 + (start_time.elapsed().subsec_nanos() as f32 * 1.0e-9);
 
     let duration_string = format!("{:.3}s", seconds);
 

@@ -11,7 +11,7 @@ use self::groupbuckets::GroupBuckets;
 
 enum SourceType<'a, ColumnValue: Sized + 'static> {
     Row(&'a [ColumnValue]),
-    Group(&'a Group<ColumnValue=ColumnValue>)
+    Group(&'a dyn Group<ColumnValue=ColumnValue>)
 }
 
 struct Source<'a, ColumnValue: Sized + 'static> {
@@ -34,7 +34,7 @@ impl<'a, ColumnValue: Sized> Source<'a, ColumnValue> {
         }
     }
 
-    fn find_group_from_source_id(&self, source_id: u32) -> Option<&Group<ColumnValue=ColumnValue>> {
+    fn find_group_from_source_id(&self, source_id: u32) -> Option<& dyn Group<ColumnValue=ColumnValue>> {
         if self.source_id == source_id {
             match &self.source_type {
                 &SourceType::Group(group) => Some(group),
@@ -70,7 +70,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
 
     // TODO: result_cb should yield a boxed array instead of a reference
     pub fn execute_query_plan<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
-    result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>)
+    result_cb: &'c mut dyn FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>)
     -> Result<(), String>
     {
         self.execute(expr, result_cb, None)
@@ -83,7 +83,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
     }
 
     fn execute<'b, 'c>(&self, expr: &SExpression<'a, Storage::Info>,
-        result_cb: &'c mut FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>,
+        result_cb: &'c mut dyn FnMut(&[<Storage::Info as DatabaseInfo>::ColumnValue]) -> Result<(), String>,
         source: Option<&Source<'b, <Storage::Info as DatabaseInfo>::ColumnValue>>)
     -> Result<(), String>
     {
@@ -97,7 +97,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                         source_type: SourceType::Row(&row)
                     };
 
-                    try!(self.execute(yield_fn, result_cb, Some(&new_source)));
+                    self.execute(yield_fn, result_cb, Some(&new_source))?;
                 }
 
                 Ok(())
@@ -105,14 +105,14 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             &SExpression::LeftJoin { source_id, ref yield_in_fn, ref predicate, ref yield_out_fn, ref right_rows_if_none } => {
                 let mut one_or_more_rows = false;
 
-                try!(self.execute(yield_in_fn, &mut |row| {
+                self.execute(yield_in_fn, &mut |row| {
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
                         source_type: SourceType::Row(row)
                     };
 
-                    let pred_result = try!(self.resolve_value(predicate, Some(&new_source)));
+                    let pred_result = self.resolve_value(predicate, Some(&new_source))?;
 
                     if pred_result.tests_true() {
                         one_or_more_rows = true;
@@ -120,7 +120,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     } else {
                         Ok(())
                     }
-                }, source));
+                }, source)?;
 
                 if !one_or_more_rows {
                     // no rows were matched
@@ -149,7 +149,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             &SExpression::TempGroupBy { source_id, ref yield_in_fn, ref group_by_values, ref yield_out_fn } => {
                 let mut group_buckets = GroupBuckets::new();
 
-                try!(self.execute(yield_in_fn, &mut |row| {
+                self.execute(yield_in_fn, &mut |row| {
                     let new_source = Source {
                         parent: source,
                         source_id: source_id,
@@ -160,7 +160,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                         self.resolve_value(value, Some(&new_source))
                     }).collect();
 
-                    let key = try!(result);
+                    let key = result?;
 
                     // TODO: don't box up row
                     let row_boxed = row.to_vec().into_boxed_slice();
@@ -168,7 +168,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                     group_buckets.insert(key.into_boxed_slice(), row_boxed);
 
                     Ok(())
-                }, source));
+                }, source)?;
 
                 // the group buckets have been filled.
                 // now to yield for each group...
@@ -180,7 +180,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                         source_type: SourceType::Group(&group)
                     };
 
-                    try!(self.execute(yield_out_fn, result_cb, Some(&new_source)));
+                    self.execute(yield_out_fn, result_cb, Some(&new_source))?;
                 }
 
                 Ok(())
@@ -195,7 +195,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
             },
             &SExpression::If { ref chains, ref else_ } => {
                 for chain in chains {
-                    let pred_result = try!(self.resolve_value(&chain.predicate, source));
+                    let pred_result = self.resolve_value(&chain.predicate, source)?;
 
                     if pred_result.tests_true() {
                         return self.execute(&chain.yield_fn, result_cb, source);
@@ -247,8 +247,8 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 }
             },
             &SExpression::BinaryOp { op, ref lhs, ref rhs } => {
-                let l = try!(self.resolve_value(lhs, source));
-                let r = try!(self.resolve_value(rhs, source));
+                let l = self.resolve_value(lhs, source)?;
+                let r = self.resolve_value(rhs, source)?;
 
                 Ok(match op {
                     BinaryOp::Equal => l.equals(&r),
@@ -268,7 +268,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 })
             },
             &SExpression::UnaryOp { op, ref expr } => {
-                let e = try!(self.resolve_value(expr, source));
+                let e = self.resolve_value(expr, source)?;
 
                 Ok(match op {
                     UnaryOp::Negate => e.negate()
@@ -287,7 +287,7 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                                 source_type: SourceType::Row(&row)
                             };
 
-                            let v = try!(self.resolve_value(value, Some(&new_source)));
+                            let v = self.resolve_value(value, Some(&new_source))?;
                             op_functor.feed(v);
                         }
 
@@ -313,13 +313,13 @@ where <Storage::Info as DatabaseInfo>::Table: 'a
                 let mut r = None;
                 let mut row_count = 0;
 
-                try!(self.execute(yield_in_fn, &mut |row| {
+                self.execute(yield_in_fn, &mut |row| {
                     if row_count == 0 {
                         r = Some(row.to_vec());
                     }
                     row_count += 1;
                     Ok(())
-                }, source));
+                }, source)?;
 
                 if row_count == 1 {
                     let row = r.unwrap();

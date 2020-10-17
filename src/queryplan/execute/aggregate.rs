@@ -113,7 +113,7 @@ impl<ColumnValue: ColumnValueOps> AggregateFunction<ColumnValue> for Max<ColumnV
     }
 }
 
-pub fn get_aggregate_function<ColumnValue>(op: AggregateOp) -> Box<AggregateFunction<ColumnValue> + 'static>
+pub fn get_aggregate_function<ColumnValue>(op: AggregateOp) -> Box<dyn AggregateFunction<ColumnValue> + 'static>
 where ColumnValue: Sized + ColumnValueOps + 'static
 {
     match op {

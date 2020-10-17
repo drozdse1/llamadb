@@ -55,28 +55,30 @@ impl<ColumnValue: Clone + Eq + Hash + 'static> Iterator for IntoIter<ColumnValue
 }
 
 pub struct GroupBucket<ColumnValue: Clone + Eq + Hash + 'static> {
-    rows: Vec<Box<[ColumnValue]>>
+    
+    rows: Vec<Box<[ColumnValue]>>,
 }
 
 impl<ColumnValue: Clone + Eq + Hash + 'static> Group for GroupBucket<ColumnValue> {
     type ColumnValue = ColumnValue;
 
     fn get_any_row<'b>(&'b self) -> Option<Cow<'b, [ColumnValue]>> {
-        use std::borrow::IntoCow;
 
-        self.rows.iter().nth(0).map(|r| r.into_cow())
+        self.rows.iter().nth(0).map(|r| {
+            let row_ref: &[ColumnValue] = &r;
+            Cow::Borrowed(row_ref)
+        })
     }
 
     fn count(&self) -> u64 {
         self.rows.len() as u64
     }
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item=Cow<'a, [ColumnValue]>> + 'a> {
         Box::new(self.rows.iter().map(|row| {
-            use std::borrow::IntoCow;
 
             let row_ref: &[ColumnValue] = &row;
-            row_ref.into_cow()
+            Cow::Borrowed(row_ref)
         }))
     }
 }

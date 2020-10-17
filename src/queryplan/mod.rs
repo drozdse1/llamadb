@@ -5,6 +5,7 @@ use sqlsyntax::ast;
 
 use std::fmt;
 use std::collections::HashMap;
+use std::borrow::Cow;
 
 mod execute;
 mod sexpression;
@@ -663,8 +664,6 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         groups_info: &mut GroupsInfo)
     -> Result<SExpression<'a, DB>, QueryPlanCompileError>
     {
-        use std::borrow::IntoCow;
-
         match ast {
             ast::Expression::Ident(s) => {
                 let column_identifier = try!(new_identifier(&s));
@@ -718,13 +717,13 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::StringLiteral(s) => {
-                match DB::ColumnValue::from_string_literal(s.into_cow()) {
+                match DB::ColumnValue::from_string_literal(Cow::Owned(s)) {
                     Ok(value) => Ok(SExpression::Value(value)),
                     Err(s) => Err(QueryPlanCompileError::BadStringLiteral(s.into_owned()))
                 }
             },
             ast::Expression::Number(s) => {
-                match DB::ColumnValue::from_number_literal(s.into_cow()) {
+                match DB::ColumnValue::from_number_literal(Cow::Owned(s)) {
                     Ok(value) => Ok(SExpression::Value(value)),
                     Err(s) => Err(QueryPlanCompileError::BadNumberLiteral(s.into_owned()))
                 }
@@ -744,7 +743,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     next_query_id: self.next_query_id
                 };
 
-                let plan = try!(compiler.compile(*subquery, scope, groups_info));
+                let plan = compiler.compile(*subquery, scope, groups_info)?;
 
                 Ok(SExpression::Map {
                     source_id: source_id,
@@ -756,7 +755,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::FunctionCall { name, arguments } => {
-                let ident = try!(new_identifier(&name));
+                let ident = new_identifier(&name)?;
 
                 macro_rules! aggregate {
                     ($op:expr) => (
@@ -767,7 +766,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
 
                             let mut g = GroupsInfo::new();
 
-                            let value = try!(self.ast_expression_to_sexpression(arg, scope, &mut g));
+                            let value = self.ast_expression_to_sexpression(arg, scope, &mut g)?;
 
                             if let Some(aggregated_query) = g.innermost_nonaggregated_query {
                                 if aggregated_query <= self.query_id {
@@ -802,7 +801,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 }
             },
             ast::Expression::FunctionCallAggregateAll { name } => {
-                let ident = try!(new_identifier(&name));
+                let ident = new_identifier(&name)?;
 
                 match &ident as &str {
                     "count" => {
@@ -925,8 +924,8 @@ where <DB as DatabaseInfo>::Table: 'a
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         let cn: Vec<_> = self.out_column_names.iter().map(|n| format!("`{}`", n)).collect();
 
-        try!(writeln!(f, "query plan"));
-        try!(writeln!(f, "column names: ({})", cn.join(", ")));
+        writeln!(f, "query plan")?;
+        writeln!(f, "column names: ({})", cn.join(", "))?;
         self.expr.fmt(f)
     }
 }

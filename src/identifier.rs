@@ -56,17 +56,17 @@ impl fmt::Debug for Identifier {
 }
 
 fn normalize(value: &str) -> Option<String> {
-    use std::ascii::AsciiExt;
+    // use std::ascii::AsciiExt;
 
     fn is_valid(value: &str) -> bool {
         if let Some(c) = value.chars().nth(0) {
             // Test if the first character is not a digit or space
             match c {
-                '0'...'9' | ' ' => false,
+                '0'..='9' | ' ' => false,
                 _ => {
                     value.chars().all(|c| {
                         match c {
-                            'a'...'z' | 'A'...'Z' | '0'...'9' | '_' | ' ' => true,
+                            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | ' ' => true,
                             _ => false
                         }
                     })

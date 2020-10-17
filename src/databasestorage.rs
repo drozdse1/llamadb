@@ -7,7 +7,7 @@ pub trait DatabaseStorage {
     type Info: DatabaseInfo;
 
     fn scan_table<'a>(&'a self, table: &'a <Self::Info as DatabaseInfo>::Table)
-    -> Box<Group<ColumnValue=<Self::Info as DatabaseInfo>::ColumnValue> + 'a>;
+    -> Box<dyn Group<ColumnValue=<Self::Info as DatabaseInfo>::ColumnValue> + 'a>;
 }
 
 pub trait Group {
@@ -19,5 +19,5 @@ pub trait Group {
     
     fn count(&self) -> u64;
 
-    fn iter<'a>(&'a self) -> Box<Iterator<Item=Cow<'a, [Self::ColumnValue]>> + 'a>;
+    fn iter<'a>(&'a self) -> Box<dyn Iterator<Item=Cow<'a, [Self::ColumnValue]>> + 'a>;
 }
