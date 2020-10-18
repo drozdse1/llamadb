@@ -7,7 +7,7 @@ fn string_width(value: &str) -> usize {
     value.split("\n").map(|s| s.chars().count()).max().unwrap()
 }
 
-pub fn pretty_select<I, S>(out: &mut Write, column_names: &[String], mut iter: I, page_length: usize)
+pub fn pretty_select<I, S>(out: &mut dyn Write, column_names: &[String], mut iter: I, page_length: usize)
 -> Result<u64, io::Error>
 where I: Iterator<Item=Box<[S]>>, S: ToString
 {
@@ -41,12 +41,12 @@ where I: Iterator<Item=Box<[S]>>, S: ToString
                 cmp::max(string_width(&column_names[i]), row_max)
             }).collect();
 
-            let table_width = try!(print_headers(out, &widths, padding, column_names));
+            let table_width = print_headers(out, &widths, padding, column_names)?;
             for row in rows {
-                try!(print_row(out, &widths, padding, &row));
+                print_row(out, &widths, padding, &row)?;
             }
-            try!(print_separator(out, table_width));
-            try!(write!(out, "\n"));
+            print_separator(out, table_width)?;
+            write!(out, "\n")?;
         }
     }
 
@@ -55,14 +55,14 @@ where I: Iterator<Item=Box<[S]>>, S: ToString
 
         let widths: Vec<usize> = column_names.iter().map(|name| string_width(&name)).collect();
 
-        try!(print_headers(out, &widths, padding, column_names));
-        try!(write!(out, "\n"));
+        print_headers(out, &widths, padding, column_names)?;
+        write!(out, "\n")?;
     }
     
     Ok(row_count as u64)
 }
 
-fn print_headers(out: &mut Write, widths: &[usize], padding: usize, column_names: &[String])
+fn print_headers(out: &mut dyn Write, widths: &[usize], padding: usize, column_names: &[String])
 -> Result<usize, io::Error>
 {
     // table width
@@ -74,29 +74,29 @@ fn print_headers(out: &mut Write, widths: &[usize], padding: usize, column_names
     // ----------------------
     let table_width = widths.iter().fold(0, |prev, &width| prev + width) + widths.len()*(2*padding + 1) + 1;
 
-    try!(print_separator(out, table_width));
-    try!(print_row(out, widths, padding, column_names));
-    try!(print_separator(out, table_width));
+    print_separator(out, table_width)?;
+    print_row(out, widths, padding, column_names)?;
+    print_separator(out, table_width)?;
 
     Ok(table_width)
 }
 
-fn print_separator(out: &mut Write, table_width: usize) -> Result<(), io::Error> {
+fn print_separator(out: &mut dyn Write, table_width: usize) -> Result<(), io::Error> {
     for _ in 0..table_width {
-        try!(write!(out, "-"));
+        write!(out, "-")?;
     }
     write!(out, "\n")
 }
 
-fn print_row(out: &mut Write, widths: &[usize], padding: usize, columns: &[String])
+fn print_row(out: &mut dyn Write, widths: &[usize], padding: usize, columns: &[String])
 -> Result<(), io::Error>
 {
     for (width, column) in widths.iter().zip(columns.iter()) {
-        try!(write!(out, "|"));
-        for _ in 0..padding { try!(write!(out, " ")); }
-        try!(write!(out, "{}", column));
+        write!(out, "|")?;
+        for _ in 0..padding { write!(out, " ")?; }
+        write!(out, "{}", column)?;
 
-        for _ in 0..(width-column.chars().count() + padding) { try!(write!(out, " ")); }
+        for _ in 0..(width-column.chars().count() + padding) { write!(out, " ")?; }
     }
     write!(out, "|\n")
 }

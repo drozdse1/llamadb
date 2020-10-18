@@ -66,7 +66,7 @@ fn main() {
     }
 }
 
-fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb::sqlsyntax::lexer::Token])
+fn execute(out: &mut dyn Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb::sqlsyntax::lexer::Token])
 -> Result<(), String>
 {
     let statement = match llamadb::sqlsyntax::parser::parse_statement(tokens) {
@@ -77,16 +77,14 @@ fn execute(out: &mut Write, db: &mut llamadb::tempdb::TempDb, tokens: &[llamadb:
     execute_statement(out, db, statement)
 }
 
-fn execute_statement(out: &mut Write, db: &mut llamadb::tempdb::TempDb, statement: llamadb::sqlsyntax::ast::Statement)
+fn execute_statement(out: &mut dyn Write, db: &mut llamadb::tempdb::TempDb, statement: llamadb::sqlsyntax::ast::Statement)
 -> Result<(), String>
 {
     use llamadb::tempdb::ExecuteStatementResponse;
 
-    let mut execute_result = None;
-
     let start_time = Instant::now();
 
-    execute_result = Some(db.execute_statement(statement));
+    let execute_result = Some(db.execute_statement(statement));
     
     let seconds = start_time.elapsed().as_secs() as f32 + (start_time.elapsed().subsec_nanos() as f32 * 1.0e-9);
 
@@ -119,13 +117,13 @@ fn execute_statement(out: &mut Write, db: &mut llamadb::tempdb::TempDb, statemen
     Ok(())
 }
 
-fn load_testdata(out: &mut Write, db: &mut llamadb::tempdb::TempDb) -> Result<(), String> {
+fn load_testdata(out: &mut dyn Write, db: &mut llamadb::tempdb::TempDb) -> Result<(), String> {
     let test_data = include_str!("testdata.sql");
 
     let statements = llamadb::sqlsyntax::parse_statements(test_data);
 
     for statement in statements {
-        try!(execute_statement(out, db, statement));
+        execute_statement(out, db, statement)?;
     }
 
     Ok(())

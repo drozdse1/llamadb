@@ -26,7 +26,7 @@ pub enum ExecuteStatementResponse<'a> {
     Inserted(u64),
     Select {
         column_names: Box<[String]>,
-        rows: Box<Iterator<Item=Box<[Variant]>> + 'a>
+        rows: Box<dyn Iterator<Item=Box<[Variant]>> + 'a>
     },
     Explain(String)
 }
@@ -57,7 +57,7 @@ impl<'a> Group for ScanGroup<'a> {
         self.table.rowid_index.len() as u64
     }
 
-    fn iter<'b>(&'b self) -> Box<Iterator<Item=Cow<'b, [Variant]>> + 'b> {
+    fn iter<'b>(&'b self) -> Box<dyn Iterator<Item=Cow<'b, [Variant]>> + 'b> {
         let table = self.table;
         let columns: &'b [self::table::Column] = &table.columns;
 
@@ -122,7 +122,7 @@ impl DatabaseStorage for TempDb {
     type Info = TempDb;
 
     fn scan_table<'a>(&'a self, table: &'a Table)
-    -> Box<Group<ColumnValue=Variant> + 'a>
+    -> Box<dyn Group<ColumnValue=Variant> + 'a>
     {
         Box::new(ScanGroup {
             table: table
@@ -163,14 +163,14 @@ impl TempDb {
             let type_name = Identifier::new(&column.type_name).unwrap();
             let type_array_size = match column.type_array_size {
                 Some(Some(s)) => {
-                    let v = try!(self.parse_number_as_u64(s));
+                    let v = self.parse_number_as_u64(s)?;
                     Some(Some(v))
                 },
                 Some(None) => Some(None),
                 None => None
             };
 
-            let dbtype = try!(DbType::from_identifier(&type_name, type_array_size).ok_or(format!("{} is not a valid column type", type_name)));
+            let dbtype = DbType::from_identifier(&type_name, type_array_size).ok_or(format!("{} is not a valid column type", type_name))?;
 
             let nullable = column.constraints.iter().any(|c| {
                 c.constraint == ast::CreateTableColumnConstraintType::Nullable
@@ -184,14 +184,14 @@ impl TempDb {
             })
         }).collect();
 
-        let columns = try!(columns_result);
+        let columns = columns_result?;
 
-        try!(self.add_table(Table {
+        self.add_table(Table {
             name: table_name,
             columns: columns,
             next_rowid: 1,
             rowid_index: BTreeSet::new()
-        }));
+        })?;
 
         Ok(ExecuteStatementResponse::Created)
     }
@@ -204,7 +204,7 @@ impl TempDb {
         let ast_index_to_column_index: Vec<u32>;
 
         {
-            let table = try!(self.get_table_mut(&table_name));
+            let table = self.get_table_mut(&table_name)?;
 
             column_types = table.get_columns().iter().map(|c| {
                 (c.dbtype, c.nullable)
@@ -255,9 +255,9 @@ impl TempDb {
                                     Ok(v) => v,
                                     Err(e) => return Err(e)
                                 };
-                                let value = try!(execute.execute_expression(&sexpr));
+                                let value = execute.execute_expression(&sexpr)?;
 
-                                let is_null = try!(variant_to_data(value, dbtype, nullable, &mut buf));
+                                let is_null = variant_to_data(value, dbtype, nullable, &mut buf)?;
                                 Ok((buf.into_boxed_slice(), is_null))
                             },
                             None => {
@@ -268,8 +268,8 @@ impl TempDb {
                         }
                     }).collect()});
 
-                    let mut table = try!(self.get_table_mut(&table_name));
-                    try!(table.insert_row(v.into_iter()).map_err(|e| format!("{}", e)));
+                    let table = self.get_table_mut(&table_name)?;
+                    table.insert_row(v.into_iter()).map_err(|e| format!("{}", e))?;
                     count += 1;
                 }
 
@@ -280,16 +280,16 @@ impl TempDb {
     }
 
     fn select(&self, stmt: ast::SelectStatement) -> ExecuteStatementResult {
-        let plan = try!(QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e)));
+        let plan = QueryPlan::compile_select(self, stmt).map_err(|e| format!("{}", e))?;
         debug!("{}", plan);
 
         let mut rows = Vec::new();
 
         let execute = ExecuteQueryPlan::new(self);
-        try!(execute.execute_query_plan(&plan.expr, &mut |r| {
+        execute.execute_query_plan(&plan.expr, &mut |r| {
             rows.push(r.to_vec().into_boxed_slice());
             Ok(())
-        }));
+        })?;
 
         let column_names: Vec<String> = plan.out_column_names.iter().map(|ident| ident.to_string()).collect();
 
@@ -300,11 +300,10 @@ impl TempDb {
     }
 
     fn explain(&self, stmt: ast::ExplainStatement) -> ExecuteStatementResult {
-        use queryplan::QueryPlan;
 
         match stmt {
             ast::ExplainStatement::Select(select) => {
-                let plan = try!(QueryPlan::compile_select(self, select).map_err(|e| format!("{}", e)));
+                let plan = QueryPlan::compile_select(self, select).map_err(|e| format!("{}", e))?;
 
                 Ok(ExecuteStatementResponse::Explain(plan.to_string()))
             }
@@ -323,7 +322,7 @@ impl TempDb {
     }
 
     fn get_table_mut(&mut self, table_name: &str) -> Result<&mut Table, String> {
-        let table_name = try!(Identifier::new(table_name).ok_or(format!("Bad table name: {}", table_name)));
+        let table_name = Identifier::new(table_name).ok_or(format!("Bad table name: {}", table_name))?;
 
         match self.tables.iter_mut().find(|t| t.name == table_name) {
             Some(s) => Ok(s),

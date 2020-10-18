@@ -360,7 +360,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         // This makes sense for INNER and OUTER joins, which also
         // contain ON (conditional) expressions.
 
-        let (new_scope, from_where) = try!(self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info));
+        let (new_scope, from_where) = self.from_where(stmt.from, stmt.where_expr, outer_scope, groups_info)?;
 
         let (mut group_by_values, having_predicate) = if !stmt.group_by.is_empty() {
             let query_id = self.query_id;
@@ -371,7 +371,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
             }).collect());
 
             let having_predicate = if let Some(having) = stmt.having {
-                Some(try!(self.ast_expression_to_sexpression(having, &new_scope, groups_info)))
+                Some(self.ast_expression_to_sexpression(having, &new_scope, groups_info)?)
             } else {
                 None
             };
@@ -381,7 +381,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
             (vec![], None)
         };
 
-        let (column_names, select_exprs) = try!(self.select(stmt.result_columns, &new_scope, groups_info));
+        let (column_names, select_exprs) = self.select(stmt.result_columns, &new_scope, groups_info)?;
 
         let grouped_source_id = self.query_to_aggregated_source_id.get(&self.query_id).cloned();
 
@@ -477,9 +477,9 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                         next_query_id: self.next_query_id
                     };
 
-                    try!(compiler.compile(*subquery, scope, groups_info))
+                    compiler.compile(*subquery, scope, groups_info)?
                 };
-                let alias_identifier = try!(new_identifier(&alias));
+                let alias_identifier = new_identifier(&alias)?;
 
                 let source_id = self.new_source_id();
 
@@ -496,14 +496,14 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 Ok(((s, t), alias_identifier))
             },
             ast::TableOrSubquery::Table { table, alias } => {
-                let table_name_identifier = try!(new_identifier(&table.table_name));
+                let table_name_identifier = new_identifier(&table.table_name)?;
                 let table = match self.db.find_table_by_name(&table_name_identifier) {
                     Some(table) => table,
                     None => return Err(QueryPlanCompileError::TableDoesNotExist(table_name_identifier))
                 };
 
                 let alias_identifier = if let Some(alias) = alias {
-                    try!(new_identifier(&alias))
+                    new_identifier(&alias)?
                 } else {
                     table_name_identifier
                 };
@@ -539,7 +539,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         let new_scope = SourceScope::new(Some(scope), source_tables, table_aliases);
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)))
+            Some(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)?)
         } else {
             None
         };
@@ -553,19 +553,19 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     fn from_where_join<'b>(&mut self, table: ast::TableOrSubquery, joins: Vec<ast::Join>, where_expr: Option<ast::Expression>, scope: &'b SourceScope<'b>, groups_info: &mut GroupsInfo)
     -> Result<(SourceScope<'b>, FromWhere<'a, DB>), QueryPlanCompileError>
     {
-        let ((source_table, fromwhere_table), alias) = try!(self.ast_table_or_subquery_to(table, scope, groups_info));
+        let ((source_table, fromwhere_table), alias) = self.ast_table_or_subquery_to(table, scope, groups_info)?;
 
         let mut new_scope = SourceScope::new(Some(scope), vec![source_table], vec![alias]);
 
         let j = try!(joins.into_iter().map(|join| {
-            let ((source_table, fromwhere_table), alias) = try!(self.ast_table_or_subquery_to(join.table, scope, groups_info));
+            let ((source_table, fromwhere_table), alias) = self.ast_table_or_subquery_to(join.table, scope, groups_info)?;
 
             match join.operator {
                 ast::JoinOperator::Inner => {
                     new_scope.tables.push(source_table);
                     new_scope.table_aliases.push(alias);
 
-                    let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
+                    let on = self.ast_expression_to_sexpression(join.on, &new_scope, groups_info)?;
                     Ok(FromWhereJoin::Inner {
                         table: fromwhere_table,
                         on: on
@@ -584,7 +584,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                     new_scope.tables.push(left_join_source_table);
                     new_scope.table_aliases.push(alias);
 
-                    let on = try!(self.ast_expression_to_sexpression(join.on, &new_scope, groups_info));
+                    let on = self.ast_expression_to_sexpression(join.on, &new_scope, groups_info)?;
                     Ok(FromWhereJoin::Left {
                         source_id: source_id,
                         table: fromwhere_table.yield_all_columns(column_count),
@@ -596,7 +596,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
         }).collect());
 
         let where_expr = if let Some(where_expr) = where_expr {
-            Some(try!(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)))
+            Some(self.ast_expression_to_sexpression(where_expr, &new_scope, groups_info)?)
         } else {
             None
         };
@@ -640,18 +640,18 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 },
                 ast::SelectColumn::Expr { expr, alias } => {
                     let column_name = if let Some(alias) = alias {
-                        try!(new_identifier(&alias))
+                        new_identifier(&alias)?
                     } else {
                         // if the expression is a simple identifier, make that
                         // the column name. else, assign an arbitrary name.
                         if let &ast::Expression::Ident(ref n) = &expr {
-                            try!(new_identifier(n))
+                            new_identifier(n)?
                         } else {
                             arbitrary_column_name()
                         }
                     };
 
-                    let e = try!(self.ast_expression_to_sexpression(expr, &scope, groups_info));
+                    let e = self.ast_expression_to_sexpression(expr, &scope, groups_info)?;
                     a.push((column_name, e));
                 }
             }
@@ -666,7 +666,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
     {
         match ast {
             ast::Expression::Ident(s) => {
-                let column_identifier = try!(new_identifier(&s));
+                let column_identifier = new_identifier(&s)?;
 
                 let (source_id, column_offset) = match scope.get_column_offset(&column_identifier) {
                     GetColumnOffsetResult::One(v) => v,
@@ -682,8 +682,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::IdentMember(s1, s2) => {
-                let table_identifier = try!(new_identifier(&s1));
-                let column_identifier = try!(new_identifier(&s2));
+                let table_identifier = new_identifier(&s1)?;
+                let column_identifier = new_identifier(&s2)?;
 
                 let (source_id, column_offset) = match scope.get_table_column_offset(&table_identifier, &column_identifier) {
                     GetColumnOffsetResult::One(v) => v,
@@ -699,7 +699,7 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::UnaryOp { expr, op } => {
-                let e = try!(self.ast_expression_to_sexpression(*expr, scope, groups_info));
+                let e = self.ast_expression_to_sexpression(*expr, scope, groups_info)?;
 
                 Ok(SExpression::UnaryOp {
                     op: ast_unaryop_to_sexpression_unaryop(op),
@@ -707,8 +707,8 @@ where DB: 'a, <DB as DatabaseInfo>::Table: 'a
                 })
             },
             ast::Expression::BinaryOp { lhs, rhs, op } => {
-                let l = try!(self.ast_expression_to_sexpression(*lhs, scope, groups_info));
-                let r = try!(self.ast_expression_to_sexpression(*rhs, scope, groups_info));
+                let l = self.ast_expression_to_sexpression(*lhs, scope, groups_info)?;
+                let r = self.ast_expression_to_sexpression(*rhs, scope, groups_info)?;
 
                 Ok(SExpression::BinaryOp {
                     op: ast_binaryop_to_sexpression_binaryop(op),
